@@ -438,7 +438,7 @@ tr:hover td{background:var(--bg3)}
 var GH_CONFIG = {
   owner: 'hsdhr0-coder',
   repo:  'workplace-dashboard',
-  token: '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',
+  token: sessionStorage.getItem('gh_token') || '',
   branch: 'main'
 };
 
@@ -618,6 +618,18 @@ document.addEventListener('DOMContentLoaded', function(){
   var mSel = document.getElementById('month-select');
   if (ySel) ySel.value = String(SELECTED_YEAR);
   if (mSel) mSel.value = SELECTED_MONTH;
+
+  // 토큰 없으면 입력창 표시
+  if (!sessionStorage.getItem('gh_token')) {
+    var tok = prompt('🔑 GitHub 토큰을 입력하세요\n(이 탭을 닫으면 다시 물어봐요)');
+    if (tok && tok.trim()) {
+      sessionStorage.setItem('gh_token', tok.trim());
+      GH_CONFIG.token = tok.trim();
+    }
+  } else {
+    GH_CONFIG.token = sessionStorage.getItem('gh_token');
+  }
+
   setGhStatus('🔄 GitHub 데이터 불러오는 중…', 'var(--text2)');
   ghLoadAll();
 });
