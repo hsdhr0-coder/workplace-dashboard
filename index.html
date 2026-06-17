@@ -5,10 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>사업장 통합관리 대시보드</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<!-- Firebase SDK compat (v10) -->
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <style>
 :root{--bg:#0d0f14;--bg2:#13161d;--bg3:#1a1e28;--border:#252a38;--accent:#00d4aa;--loss:#ff6b6b;--warn:#ffd166;--blue:#4fc3f7;--purple:#b39ddb;--text:#e2e8f0;--text2:#8892a4}
 *{box-sizing:border-box;margin:0;padding:0}
@@ -74,7 +70,7 @@ tr:hover td{background:var(--bg3)}
   <!-- 연도 선택 -->
   <div style="display:flex;align-items:center;gap:6px;margin-left:16px">
     <span style="color:var(--text2);font-size:11px;font-weight:600">📅 연도</span>
-    <select id="year-select" onchange="onYearChange()" style="background:var(--bg3);color:var(--accent);border:1px solid var(--border);border-radius:5px;padding:3px 8px;font-size:13px;font-weight:700">
+    <select id="year-select" onchange="onPeriodChange()" style="background:var(--bg3);color:var(--accent);border:1px solid var(--border);border-radius:5px;padding:3px 8px;font-size:13px;font-weight:700">
       <option value="2026">2026</option>
       <option value="2027">2027</option>
       <option value="2028">2028</option>
@@ -83,12 +79,20 @@ tr:hover td{background:var(--bg3)}
     </select>
   </div>
 
-  <!-- Firebase 상태 / 로그인 -->
-  <div id="fb-auth-bar" style="display:flex;align-items:center;gap:8px;margin-left:auto">
-    <span id="fb-status" style="font-size:11px;color:var(--text2)">⏳ Firebase 연결 중…</span>
-    <span id="fb-user" style="font-size:11px;color:var(--accent);display:none"></span>
-    <button id="btn-login" onclick="fbLogin()" style="display:none;background:var(--accent);color:#000;border:none;padding:4px 12px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:700">🔐 Google 로그인</button>
-    <button id="btn-logout" onclick="fbLogout()" style="display:none;background:var(--bg3);color:var(--text2);border:1px solid var(--border);padding:4px 10px;border-radius:5px;cursor:pointer;font-size:11px">로그아웃</button>
+  <!-- 월 선택 -->
+  <div style="display:flex;align-items:center;gap:6px">
+    <span style="color:var(--text2);font-size:11px;font-weight:600">📆 월</span>
+    <select id="month-select" onchange="onPeriodChange()" style="background:var(--bg3);color:var(--accent);border:1px solid var(--border);border-radius:5px;padding:3px 8px;font-size:13px;font-weight:700">
+      <option value="00">전체</option>
+      <option value="01">1월</option><option value="02">2월</option><option value="03">3월</option>
+      <option value="04">4월</option><option value="05">5월</option><option value="06">6월</option>
+      <option value="07">7월</option><option value="08">8월</option><option value="09">9월</option>
+      <option value="10">10월</option><option value="11">11월</option><option value="12">12월</option>
+    </select>
+  </div>
+  <!-- GitHub 저장 상태 -->
+  <div style="display:flex;align-items:center;gap:8px;margin-left:auto">
+    <span id="gh-status" style="font-size:11px;color:var(--text2)">⏳ 초기화 중…</span>
   </div>
 </div>
 
@@ -102,8 +106,8 @@ tr:hover td{background:var(--bg3)}
   <label>&#x1f4c1; 민원(VOIC) <input type="file" accept=".csv" onchange="loadCSV(this,'voic')"></label>
   <span class="file-status" id="fstatus">로딩중...</span>
   <button class="export-btn" onclick="exportReport()">&#x1f4e4; 보고자료 생성</button>
-  <button class="export-btn" style="background:#7ee787;margin-left:0" onclick="fbSaveAll()">☁️ Firebase 저장</button>
-  <button class="export-btn" style="background:#90caf9;margin-left:0" onclick="fbLoadAll()">🔄 Firebase 불러오기</button>
+  <button class="export-btn" style="background:#7ee787;margin-left:0" onclick="ghSaveAll()">☁️ GitHub 저장</button>
+  <button class="export-btn" style="background:#90caf9;margin-left:0" onclick="ghLoadAll()">🔄 GitHub 불러오기</button>
   <button class="export-btn" style="background:#7ee787;margin-left:0" onclick="exportInputData()">&#x1f4be; KPI/체크리스트 백업 저장</button>
   <label style="background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:5px;padding:5px 12px;cursor:pointer;font-size:11px;font-weight:700">&#x1f4c2; 백업 불러오기 <input type="file" accept=".json" onchange="importInputData(this)" style="display:none"></label>
   <button class="export-btn" style="background:#90caf9;margin-left:0" onclick="saveAsHTML()">&#x1f5c2;&#xfe0f; 지금 상태로 새 HTML 저장</button>
@@ -429,250 +433,193 @@ tr:hover td{background:var(--bg3)}
 <script>
 
 // ===================================================
-// 🔥 FIREBASE 설정 & 초기화 (프로젝트 고정)
+// ☁️ GitHub API 설정
 // ===================================================
-var FIREBASE_CONFIG = {
-  apiKey:            "AIzaSyBOgbduxm6qw5vsYzUjrcdpJGkEqguz-Vg",
-  authDomain:        "hr-dashboard-309b2.firebaseapp.com",
-  projectId:         "hr-dashboard-309b2",
-  storageBucket:     "hr-dashboard-309b2.firebasestorage.app",
-  messagingSenderId: "239031071073",
-  appId:             "1:239031071073:web:da06b5c6d5f8919afc5520",
-  measurementId:     "G-9FJSJR6W38"
+var GH_CONFIG = {
+  owner: 'hsdhr0-coder',
+  repo:  'workplace-dashboard',
+  token: '',   // ← PAT를 여기에 입력 (Settings에서 생성)
+  branch: 'main'
 };
 
-var db      = null;
-var fbAuth  = null;
-var fbUser  = null;
-
-// 현재 선택된 연도 (기본값: 2026)
+// 현재 선택된 연도/월
 var SELECTED_YEAR = (function(){
   var y = new Date().getFullYear();
   if (y < 2026) return 2026;
   if (y > 2030) return 2030;
   return y;
 })();
+var SELECTED_MONTH = '00'; // '00' = 전체, '01'~'12' = 각 월
 
-// ---- 헬퍼 ----
-function getYearDocPath(collection) {
-  return collection + '_' + SELECTED_YEAR;
-}
-
-function setFbStatus(msg, color) {
-  var el = document.getElementById('fb-status');
+// 상태 표시
+function setGhStatus(msg, color) {
+  var el = document.getElementById('gh-status');
   if (el) { el.textContent = msg; el.style.color = color || 'var(--text2)'; }
 }
 
-// ---- 연도 변경 ----
-function onYearChange() {
-  var sel = document.getElementById('year-select');
-  SELECTED_YEAR = parseInt(sel.value, 10);
-  // 실시간 리스너 재연결
-  if (db && fbUser) {
-    fbStartRealtime();
-    fbLoadAll();
-  } else {
-    D.kpi = null; D.checklist = null;
-    loadKPIData(); loadChecklistData();
-    renderAll(); updateStatus();
-  }
+// ---- 연도+월 변경 ----
+function onPeriodChange() {
+  var ySel = document.getElementById('year-select');
+  var mSel = document.getElementById('month-select');
+  if (ySel) SELECTED_YEAR = parseInt(ySel.value, 10);
+  if (mSel) SELECTED_MONTH = mSel.value;
+  D.kpi = null; D.checklist = null;
+  loadKPIData(); loadChecklistData();
+  ghLoadAll();
 }
 
-// ---- Firebase 초기화 ----
-function initFirebase() {
-  try {
-    var app = firebase.apps.length ? firebase.app() : firebase.initializeApp(FIREBASE_CONFIG);
-    db     = firebase.firestore(app);
-    fbAuth = firebase.auth(app);
+// ---- GitHub API 공통 함수 ----
+function ghPath(type, key) {
+  // type: csv / json
+  // CSV: data/2026/01/turnover.csv  (월별)
+  // JSON: data/2026/kpi.json, data/2026/checklist.json, data/2026/issues.json (연도별)
+  if (type === 'csv') {
+    var m = SELECTED_MONTH === '00' ? '01' : SELECTED_MONTH;
+    return 'data/' + SELECTED_YEAR + '/' + m + '/' + key + '.csv';
+  }
+  return 'data/' + SELECTED_YEAR + '/' + key + '.json';
+}
 
-    setFbStatus('⏳ 인증 확인 중…', 'var(--text2)');
+function ghHeaders() {
+  var h = { 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json' };
+  if (GH_CONFIG.token) h['Authorization'] = 'token ' + GH_CONFIG.token;
+  return h;
+}
 
-    fbAuth.onAuthStateChanged(function(user) {
-      fbUser = user;
-      if (user) {
-        setFbStatus('✅ 연결됨', 'var(--accent)');
-        var nameEl = document.getElementById('fb-user');
-        if (nameEl) { nameEl.textContent = '👤 ' + (user.email || user.displayName || '사용자'); nameEl.style.display = ''; }
-        var btnLogin  = document.getElementById('btn-login');
-        var btnLogout = document.getElementById('btn-logout');
-        if (btnLogin)  btnLogin.style.display  = 'none';
-        if (btnLogout) btnLogout.style.display = '';
-        fbStartRealtime();
-        fbLoadAll();
-      } else {
-        setFbStatus('🔐 로그인 필요', 'var(--warn)');
-        var nameEl = document.getElementById('fb-user');
-        if (nameEl) nameEl.style.display = 'none';
-        var btnLogin  = document.getElementById('btn-login');
-        var btnLogout = document.getElementById('btn-logout');
-        if (btnLogin)  btnLogin.style.display  = '';
-        if (btnLogout) btnLogout.style.display = 'none';
-      }
+function ghApiUrl(path) {
+  return 'https://api.github.com/repos/' + GH_CONFIG.owner + '/' + GH_CONFIG.repo + '/contents/' + path;
+}
+
+// 파일 읽기 (없으면 null 반환)
+function ghGetFile(path) {
+  return fetch(ghApiUrl(path), { headers: ghHeaders() })
+    .then(function(r) {
+      if (r.status === 404) return null;
+      if (!r.ok) throw new Error('GET ' + path + ' 실패: ' + r.status);
+      return r.json();
     });
-  } catch(err) {
-    setFbStatus('❌ Firebase 오류: ' + err.message, 'var(--loss)');
-    console.error('Firebase init error:', err);
+}
+
+// 파일 쓰기 (없으면 생성, 있으면 업데이트)
+function ghPutFile(path, contentStr, msg) {
+  return ghGetFile(path).then(function(existing) {
+    var body = {
+      message: msg || ('Update ' + path),
+      content: btoa(unescape(encodeURIComponent(contentStr))),
+      branch: GH_CONFIG.branch
+    };
+    if (existing && existing.sha) body.sha = existing.sha;
+    return fetch(ghApiUrl(path), {
+      method: 'PUT',
+      headers: ghHeaders(),
+      body: JSON.stringify(body)
+    }).then(function(r) {
+      if (!r.ok) return r.json().then(function(e){ throw new Error(e.message); });
+      return r.json();
+    });
+  });
+}
+
+// ---- CSV 저장/불러오기 ----
+function ghSaveCSV(key, data) {
+  if (!GH_CONFIG.token) return Promise.resolve();
+  // JSON → CSV 변환
+  if (!data || !data.length) return Promise.resolve();
+  var headers = Object.keys(data[0]);
+  var csv = headers.join(',') + '\n' + data.map(function(row){
+    return headers.map(function(h){ var v=String(row[h]||''); return v.includes(',')?'"'+v+'"':v; }).join(',');
+  }).join('\n');
+  return ghPutFile(ghPath('csv', key), csv, '[dashboard] ' + SELECTED_YEAR + '/' + SELECTED_MONTH + ' ' + key + ' 업데이트');
+}
+
+function ghLoadCSV(key) {
+  // 월 선택 시 해당 월만, 전체(00) 시 모든 월 합산
+  if (SELECTED_MONTH !== '00') {
+    var path = 'data/' + SELECTED_YEAR + '/' + SELECTED_MONTH + '/' + key + '.csv';
+    return ghGetFile(path).then(function(f){
+      if (!f) return null;
+      var text = decodeURIComponent(escape(atob(f.content.replace(/\n/g,''))));
+      return parseCSV(text);
+    });
+  } else {
+    // 전체: 01~12 모든 월 합산
+    var months = ['01','02','03','04','05','06','07','08','09','10','11','12'];
+    return Promise.all(months.map(function(m){
+      var path = 'data/' + SELECTED_YEAR + '/' + m + '/' + key + '.csv';
+      return ghGetFile(path).then(function(f){
+        if (!f) return [];
+        var text = decodeURIComponent(escape(atob(f.content.replace(/\n/g,''))));
+        return parseCSV(text);
+      }).catch(function(){ return []; });
+    })).then(function(arrays){
+      return [].concat.apply([], arrays);
+    });
   }
 }
 
-// ---- Google 로그인/로그아웃 ----
-function fbLogin() {
-  if (!fbAuth) { alert('Firebase 초기화 중입니다. 잠시 후 다시 시도해주세요.'); return; }
-  var provider = new firebase.auth.GoogleAuthProvider();
-  fbAuth.signInWithPopup(provider).catch(function(err) {
-    alert('로그인 실패: ' + err.message);
-  });
-}
-function fbLogout() {
-  if (!fbAuth) return;
-  fbAuth.signOut();
+// ---- JSON 저장/불러오기 (KPI, 체크리스트, 이슈) ----
+function ghSaveJSON(key, data) {
+  if (!GH_CONFIG.token) return Promise.resolve();
+  return ghPutFile(ghPath('json', key), JSON.stringify(data, null, 2), '[dashboard] ' + SELECTED_YEAR + ' ' + key + ' 업데이트');
 }
 
-// ===================================================
-// ☁️ Firestore CRUD — 연도별 저장/불러오기
-// ===================================================
-
-function fbSaveCSV(key, data) {
-  if (!db || !fbUser) return Promise.resolve();
-  return db.collection('csv_data').doc(getYearDocPath(key)).set({
-    key: key, year: SELECTED_YEAR, data: data,
-    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-    updatedBy: fbUser.email || fbUser.uid
-  });
-}
-function fbLoadCSV(key) {
-  if (!db || !fbUser) return Promise.resolve(null);
-  return db.collection('csv_data').doc(getYearDocPath(key)).get()
-    .then(function(doc){ return (doc.exists && doc.data().data) ? doc.data().data : null; });
+function ghLoadJSON(key) {
+  return ghGetFile(ghPath('json', key)).then(function(f){
+    if (!f) return null;
+    var text = decodeURIComponent(escape(atob(f.content.replace(/\n/g,''))));
+    return JSON.parse(text);
+  }).catch(function(){ return null; });
 }
 
-function fbSaveKPI() {
-  if (!db || !fbUser || !D.kpi) return Promise.resolve();
-  return db.collection('kpi_data').doc('kpi_' + SELECTED_YEAR).set({
-    year: SELECTED_YEAR, data: D.kpi,
-    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-    updatedBy: fbUser.email || fbUser.uid
-  });
-}
-function fbLoadKPI() {
-  if (!db || !fbUser) return Promise.resolve(null);
-  return db.collection('kpi_data').doc('kpi_' + SELECTED_YEAR).get()
-    .then(function(doc){ return (doc.exists && doc.data().data) ? doc.data().data : null; });
-}
-
-function fbSaveChecklist() {
-  if (!db || !fbUser || !D.checklist) return Promise.resolve();
-  return db.collection('checklist_data').doc('checklist_' + SELECTED_YEAR).set({
-    year: SELECTED_YEAR, data: D.checklist,
-    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-    updatedBy: fbUser.email || fbUser.uid
-  });
-}
-function fbLoadChecklist() {
-  if (!db || !fbUser) return Promise.resolve(null);
-  return db.collection('checklist_data').doc('checklist_' + SELECTED_YEAR).get()
-    .then(function(doc){ return (doc.exists && doc.data().data) ? doc.data().data : null; });
-}
-
-function fbSaveIssues(issues) {
-  if (!db || !fbUser) return Promise.resolve();
-  return db.collection('issues_data').doc('issues_' + SELECTED_YEAR).set({
-    year: SELECTED_YEAR, data: issues,
-    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-    updatedBy: fbUser.email || fbUser.uid
-  });
-}
-function fbLoadIssues() {
-  if (!db || !fbUser) return Promise.resolve(null);
-  return db.collection('issues_data').doc('issues_' + SELECTED_YEAR).get()
-    .then(function(doc){ return (doc.exists && doc.data().data) ? doc.data().data : null; });
-}
-
-// 전체 저장 (수동 버튼)
-function fbSaveAll() {
-  if (!db || !fbUser) { alert('Google 로그인 후 사용하세요.'); return; }
-  setFbStatus('💾 저장 중…', 'var(--warn)');
+// ---- 전체 저장 ----
+function ghSaveAll() {
+  if (!GH_CONFIG.token) {
+    alert('GitHub PAT(토큰)이 설정되지 않았습니다.\nHTML 파일의 GH_CONFIG.token에 토큰을 입력해주세요.');
+    return;
+  }
+  setGhStatus('💾 GitHub 저장 중…', 'var(--warn)');
   var csvKeys = ['turnover','accidents','overtime','education','costs','fire','voic'];
-  var ps = csvKeys.map(function(k){ return fbSaveCSV(k, D[k] || []); });
-  ps.push(fbSaveKPI(), fbSaveChecklist());
-  if (typeof ISSUES !== 'undefined') ps.push(fbSaveIssues(ISSUES));
+  var ps = csvKeys.map(function(k){ return ghSaveCSV(k, D[k] || []); });
+  ps.push(ghSaveJSON('kpi', D.kpi));
+  ps.push(ghSaveJSON('checklist', D.checklist));
+  if (typeof ISSUES !== 'undefined') ps.push(ghSaveJSON('issues', ISSUES));
   Promise.all(ps)
-    .then(function(){ setFbStatus('✅ ' + SELECTED_YEAR + '년 저장 완료 (' + new Date().toLocaleTimeString() + ')', 'var(--accent)'); alert(SELECTED_YEAR + '년 데이터가 저장되었습니다.'); })
-    .catch(function(err){ setFbStatus('❌ 저장 실패: ' + err.message, 'var(--loss)'); alert('저장 실패: ' + err.message); });
+    .then(function(){ setGhStatus('✅ ' + SELECTED_YEAR + '년 ' + (SELECTED_MONTH==='00'?'전체':SELECTED_MONTH+'월') + ' 저장 완료', 'var(--accent)'); })
+    .catch(function(err){ setGhStatus('❌ 저장 실패: ' + err.message, 'var(--loss)'); alert('저장 실패: ' + err.message); });
 }
 
-// 전체 불러오기 (수동 버튼 + 연도 변경 시)
-function fbLoadAll() {
-  if (!db || !fbUser) { alert('Google 로그인 후 사용하세요.'); return; }
-  setFbStatus('🔄 ' + SELECTED_YEAR + '년 불러오는 중…', 'var(--warn)');
+// ---- 전체 불러오기 ----
+function ghLoadAll() {
+  setGhStatus('🔄 불러오는 중…', 'var(--warn)');
   var csvKeys = ['turnover','accidents','overtime','education','costs','fire','voic'];
-  var ps = csvKeys.map(function(k){ return fbLoadCSV(k); });
-  ps.push(fbLoadKPI(), fbLoadChecklist(), fbLoadIssues());
+  var ps = csvKeys.map(function(k){ return ghLoadCSV(k).catch(function(){ return null; }); });
+  ps.push(ghLoadJSON('kpi').catch(function(){ return null; }));
+  ps.push(ghLoadJSON('checklist').catch(function(){ return null; }));
+  ps.push(ghLoadJSON('issues').catch(function(){ return null; }));
   Promise.all(ps).then(function(res){
     csvKeys.forEach(function(k,i){ if (res[i] && res[i].length) D[k] = res[i]; });
     var kpiRes = res[csvKeys.length];
-    if (kpiRes) { D.kpi = kpiRes; } else { loadKPIData(); }
+    if (kpiRes) D.kpi = kpiRes; else loadKPIData();
     var chkRes = res[csvKeys.length + 1];
-    if (chkRes) { D.checklist = chkRes; } else { loadChecklistData(); }
+    if (chkRes) D.checklist = chkRes; else loadChecklistData();
     var issRes = res[csvKeys.length + 2];
     if (issRes && Array.isArray(issRes)) ISSUES = issRes;
     updateStatus(); renderAll(); renderIssues();
-    setFbStatus('✅ ' + SELECTED_YEAR + '년 데이터 로드 완료', 'var(--accent)');
+    setGhStatus('✅ ' + SELECTED_YEAR + '년 ' + (SELECTED_MONTH==='00'?'전체':SELECTED_MONTH+'월') + ' 로드 완료', 'var(--accent)');
   }).catch(function(err){
-    setFbStatus('❌ 불러오기 실패: ' + err.message, 'var(--loss)');
-    console.error(err);
+    setGhStatus('⚠️ 일부 데이터 없음 (첫 사용 시 정상)', 'var(--warn)');
+    updateStatus(); renderAll(); renderIssues();
   });
 }
 
-// 실시간 리스너 (KPI·체크리스트 — 다른 사용자 변경 즉시 반영)
-var _fbListeners = [];
-function fbStartRealtime() {
-  if (!db || !fbUser) return;
-  _fbListeners.forEach(function(u){ u(); });
-  _fbListeners = [];
-
-  var u1 = db.collection('kpi_data').doc('kpi_' + SELECTED_YEAR)
-    .onSnapshot(function(doc){
-      if (!doc.exists) return;
-      var nd = doc.data().data;
-      if (nd && JSON.stringify(nd) !== JSON.stringify(D.kpi)) {
-        D.kpi = nd;
-        var p10 = document.getElementById('panel-10');
-        if (p10 && p10.classList.contains('active')) renderKPI();
-      }
-    });
-
-  var u2 = db.collection('checklist_data').doc('checklist_' + SELECTED_YEAR)
-    .onSnapshot(function(doc){
-      if (!doc.exists) return;
-      var nd = doc.data().data;
-      if (nd && JSON.stringify(nd) !== JSON.stringify(D.checklist)) {
-        D.checklist = nd;
-        var p11 = document.getElementById('panel-11');
-        if (p11 && p11.classList.contains('active')) renderChecklist();
-      }
-    });
-
-  var u3 = db.collection('issues_data').doc('issues_' + SELECTED_YEAR)
-    .onSnapshot(function(doc){
-      if (!doc.exists) return;
-      var nd = doc.data().data;
-      if (nd && Array.isArray(nd) && JSON.stringify(nd) !== JSON.stringify(ISSUES)) {
-        ISSUES = nd;
-        renderIssues();
-      }
-    });
-
-  _fbListeners = [u1, u2, u3];
-}
-
-// 페이지 로드 후 자동 Firebase 초기화
+// 페이지 로드 후 자동 초기화
 document.addEventListener('DOMContentLoaded', function(){
-  // 연도 셀렉터 기본값
-  var sel = document.getElementById('year-select');
-  if (sel) sel.value = String(SELECTED_YEAR);
-  // Firebase 자동 시작
-  initFirebase();
+  var ySel = document.getElementById('year-select');
+  var mSel = document.getElementById('month-select');
+  if (ySel) ySel.value = String(SELECTED_YEAR);
+  if (mSel) mSel.value = SELECTED_MONTH;
+  setGhStatus('🔄 GitHub 데이터 불러오는 중…', 'var(--text2)');
+  ghLoadAll();
 });
 
 // ===== 내장 데이터 (CSV 업로드시 교체됨) =====
@@ -748,12 +695,12 @@ function loadCSV(input, key) {
     D[key] = parsed;
     updateStatus();
     renderAll();
-    // Firebase에 자동 저장 (로그인 상태일 때)
-    if (db && fbUser) {
-      fbSaveCSV(key, parsed).then(function() {
-        setFbStatus('✅ ' + SELECTED_YEAR + '년 ' + key + ' 저장됨', 'var(--accent)');
+    // GitHub에 자동 저장 (토큰 설정 시)
+    if (GH_CONFIG.token) {
+      ghSaveCSV(key, parsed).then(function() {
+        setGhStatus('✅ ' + SELECTED_YEAR + '/' + SELECTED_MONTH + ' ' + key + ' 저장됨', 'var(--accent)');
       }).catch(function(e) {
-        setFbStatus('⚠️ Firebase 저장 실패 (로컬만 저장)', 'var(--warn)');
+        setGhStatus('⚠️ GitHub 저장 실패 (로컬만 저장)', 'var(--warn)');
       });
     }
   };
@@ -1350,7 +1297,7 @@ function deleteIssue(id) {
   if (!confirm('이 이슈를 삭제하시겠습니까?')) return;
   ISSUES = ISSUES.filter(function(i){return i.id!==id;});
   renderIssues();
-  if (db && fbUser) fbSaveIssues(ISSUES).catch(function(e){ console.warn('이슈 저장 실패:', e); });
+  if (GH_CONFIG.token) ghSaveJSON('issues', ISSUES).catch(function(e){ console.warn('이슈 저장 실패:', e); });
 }
 
 function saveIssue() {
@@ -1376,7 +1323,7 @@ function saveIssue() {
   }
   closeModal();
   renderIssues();
-  if (db && fbUser) fbSaveIssues(ISSUES).catch(function(e){ console.warn('이슈 저장 실패:', e); });
+  if (GH_CONFIG.token) ghSaveJSON('issues', ISSUES).catch(function(e){ console.warn('이슈 저장 실패:', e); });
 }
 
 function closeModal() {
@@ -1449,9 +1396,9 @@ function loadKPIData(){
 function saveKPIData(){
   // 로컬 백업
   try { localStorage.setItem(KPI_STORE_KEY + '_' + SELECTED_YEAR, JSON.stringify(D.kpi)); } catch(e){}
-  // Firebase 자동 저장 (로그인 상태일 때)
-  if (db && fbUser) {
-    fbSaveKPI().catch(function(e){ console.warn('KPI Firebase 저장 실패:', e); });
+  // GitHub 자동 저장
+  if (GH_CONFIG.token) {
+    ghSaveJSON('kpi', D.kpi).catch(function(e){ console.warn('KPI GitHub 저장 실패:', e); });
   }
 }
 
@@ -1724,8 +1671,8 @@ function loadChecklistData(){
 }
 function saveChecklistData(){
   try { localStorage.setItem(CHK_STORE_KEY + '_' + SELECTED_YEAR, JSON.stringify(D.checklist)); } catch(e){}
-  if (db && fbUser) {
-    fbSaveChecklist().catch(function(e){ console.warn('체크리스트 Firebase 저장 실패:', e); });
+  if (GH_CONFIG.token) {
+    ghSaveJSON('checklist', D.checklist).catch(function(e){ console.warn('체크리스트 GitHub 저장 실패:', e); });
   }
 }
 
@@ -1900,10 +1847,8 @@ window.addEventListener('load', function() {
   renderAll();
   renderIssues();
 
-  // Firebase가 이미 연결된 경우 실시간 리스너 시작
-  if (db && fbUser) {
-    fbStartRealtime();
-  }
+  // GitHub에서 데이터 불러오기
+  ghLoadAll();
 });
 </script>
 </body>
