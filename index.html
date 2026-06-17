@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>사업장 통합관리 대시보드</title>
+<script src="config.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
 :root{--bg:#0d0f14;--bg2:#13161d;--bg3:#1a1e28;--border:#252a38;--accent:#00d4aa;--loss:#ff6b6b;--warn:#ffd166;--blue:#4fc3f7;--purple:#b39ddb;--text:#e2e8f0;--text2:#8892a4}
@@ -438,7 +439,7 @@ tr:hover td{background:var(--bg3)}
 var GH_CONFIG = {
   owner: 'hsdhr0-coder',
   repo:  'workplace-dashboard',
-  token: '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',
+  token: window.GH_TOKEN || '',
   branch: 'main'
 };
 
